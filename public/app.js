@@ -5,26 +5,13 @@ class StorServeApp {
     this.currentPath = [];
     this.libraries = [];
     this.shares = {};
+    this.currentTab = 'shares';
     this.pendingShare = null;
     this.init();
   }
 
   init() {
     this.render();
-    this.setupEventListeners();
-  }
-
-  setupEventListeners() {
-    const app = document.getElementById('app');
-    app.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      const action = btn.dataset.action;
-      const target = btn.dataset.target;
-      if (this[action]) {
-        this[action](target);
-      }
-    });
   }
 
   async login(password) {
@@ -57,26 +44,41 @@ class StorServeApp {
       this.libraries = await res.json();
     } catch (e) {
       console.error('Error loading libraries:', e);
+      this.libraries = [];
     }
   }
 
-  async selectLibrary(libName) {
+  selectLibrary(libName) {
     this.currentLibrary = libName;
     this.currentPath = [];
     this.render();
   }
 
-  async browsePath(pathSegment) {
-    if (pathSegment === '..') {
-      this.currentPath.pop();
-    } else if (pathSegment !== '.') {
-      this.currentPath.push(pathSegment);
+  async browsePath(itemName, itemType) {
+    if (itemType === 'directory') {
+      this.currentPath.push(itemName);
     }
     this.render();
   }
 
-  async shareFile(fileOrDir) {
-    const [itemName, itemType] = fileOrDir.split('|');
+  goBack() {
+    if (this.currentPath.length > 0) {
+      this.currentPath.pop();
+      this.render();
+    }
+  }
+
+  goHome() {
+    this.currentPath = [];
+    this.render();
+  }
+
+  goToBreadcrumb(index) {
+    this.currentPath = this.currentPath.slice(0, index);
+    this.render();
+  }
+
+  shareFile(itemName, itemType) {
     const relPath = this.currentPath.length ? this.currentPath.join('/') + '/' + itemName : itemName;
     this.pendingShare = { library: this.currentLibrary, relPath, type: itemType, name: itemName };
     this.showShareModal();
@@ -99,7 +101,7 @@ class StorServeApp {
     if (!this.pendingShare) return;
     const label = document.getElementById('share-label').value;
     const expiryStr = document.getElementById('share-expiry').value;
-    const expiresAt = expiryStr ? new Date(expiryStr).toISOString() : null;
+    const expiresAt = expiryStr ? new Date(expiryStr + 'T23:59:59').toISOString() : null;
 
     try {
       const res = await fetch('/api/shares', {
@@ -114,16 +116,20 @@ class StorServeApp {
         })
       });
 
-      if (!res.ok) throw new Error('Share creation failed');
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Share creation failed');
+      }
       const share = await res.json();
 
       const protocol = window.location.protocol;
       const host = window.location.host;
       const shareUrl = `${protocol}//${host}/s/${share.token}`;
 
-      alert(`Share created! Link:\n${shareUrl}`);
+      alert(`Share created!\n\n${shareUrl}`);
       this.hideShareModal();
       await this.loadShares();
+      this.render();
     } catch (error) {
       alert('Share creation failed: ' + error.message);
     }
@@ -132,16 +138,19 @@ class StorServeApp {
   async loadShares() {
     try {
       const res = await fetch('/api/shares');
+      if (!res.ok) throw new Error('Failed to load shares');
       this.shares = await res.json();
     } catch (e) {
       console.error('Error loading shares:', e);
+      this.shares = {};
     }
   }
 
   async deleteShare(token) {
     if (!confirm('Delete this share?')) return;
     try {
-      await fetch(`/api/shares/${token}`, { method: 'DELETE' });
+      const res = await fetch(`/api/shares/${token}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
       await this.loadShares();
       this.render();
     } catch (error) {
@@ -156,8 +165,12 @@ class StorServeApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, path })
       });
-      if (!res.ok) throw new Error('Add library failed');
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Add library failed');
+      }
       await this.loadLibraries();
+      this.currentTab = 'libraries';
       this.render();
     } catch (error) {
       alert('Add library failed: ' + error.message);
@@ -167,7 +180,8 @@ class StorServeApp {
   async removeLibrary(name) {
     if (!confirm(`Remove library "${name}"?`)) return;
     try {
-      await fetch(`/api/admin/libraries/${name}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/libraries/${name}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Remove failed');
       await this.loadLibraries();
       this.render();
     } catch (error) {
@@ -175,19 +189,33 @@ class StorServeApp {
     }
   }
 
-  async loadBrowse() {
+  async loadBrowseDirectory() {
     if (!this.currentLibrary) return [];
     const path = this.currentPath.join('/');
     const url = `/api/browse/${this.currentLibrary}/${path}`;
     try {
       const res = await fetch(url);
-      if (!res.ok) return [];
+      if (!res.ok) {
+        console.error('Browse error:', res.status);
+        return [];
+      }
       const data = await res.json();
       return data.items || [];
     } catch (e) {
       console.error('Error loading browse:', e);
       return [];
     }
+  }
+
+  copyShareLink(token) {
+    const protocol = window.location.protocol;
+    const host = window.location.host;
+    const url = `${protocol}//${host}/s/${token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      alert('Share link copied!');
+    }).catch(() => {
+      alert('Copy failed. Link: ' + url);
+    });
   }
 
   render() {
@@ -197,7 +225,7 @@ class StorServeApp {
       this.setupLoginForm();
     } else {
       app.innerHTML = this.renderApp();
-      this.setupAppForm();
+      this.setupAppEventHandlers();
     }
   }
 
@@ -209,7 +237,7 @@ class StorServeApp {
           <form id="login-form">
             <div class="form-group">
               <label>Password</label>
-              <input type="password" id="login-password" placeholder="Enter password" required>
+              <input type="password" id="login-password" placeholder="Enter password" required autofocus>
             </div>
             <button type="submit" class="btn btn-primary" style="width: 100%; padding: var(--spacing-md);">
               Login
@@ -222,24 +250,52 @@ class StorServeApp {
 
   setupLoginForm() {
     const form = document.getElementById('login-form');
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const password = document.getElementById('login-password').value;
-      this.login(password);
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const password = document.getElementById('login-password').value;
+        this.login(password);
+      });
+    }
+  }
+
+  setupAppEventHandlers() {
+    const modal = document.getElementById('modal-share');
+    const closeBtn = modal.querySelector('.modal-close');
+    const submitBtn = document.getElementById('share-submit');
+    const cancelBtn = document.getElementById('share-cancel');
+
+    closeBtn.onclick = () => this.hideShareModal();
+    cancelBtn.onclick = () => this.hideShareModal();
+    submitBtn.onclick = () => this.createShare();
+
+    document.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        this.hideShareModal();
+      }
     });
+
+    const libForm = document.getElementById('library-form');
+    if (libForm) {
+      libForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = document.getElementById('lib-name').value;
+        const path = document.getElementById('lib-path').value;
+        document.getElementById('lib-name').value = '';
+        document.getElementById('lib-path').value = '';
+        this.addLibrary(name, path);
+      });
+    }
   }
 
   renderApp() {
-    const tabs = this.renderTabs();
-    const content = this.currentView === 'browse' ? this.renderBrowse() : this.renderAdmin();
-
     return `
       <div class="app-layout">
         ${this.renderHeader()}
         ${this.renderSidebar()}
         <div class="app-content">
-          ${tabs}
-          ${content}
+          ${this.renderTabs()}
+          ${this.currentView === 'browse' ? this.renderBrowseView() : this.renderAdminView()}
         </div>
       </div>
     `;
@@ -261,16 +317,20 @@ class StorServeApp {
     html += '<div class="app-sidebar-section">';
     html += '<div class="app-sidebar-title">Libraries</div>';
 
-    for (const lib of this.libraries) {
-      const active = this.currentLibrary === lib.name ? 'active' : '';
-      html += `<a class="app-sidebar-item ${active}" onclick="window.app.selectLibrary('${lib.name}')">${lib.name}</a>`;
+    if (this.libraries.length === 0) {
+      html += '<div class="text-muted" style="padding: var(--spacing-md) var(--spacing-lg);">No libraries</div>';
+    } else {
+      for (const lib of this.libraries) {
+        const active = this.currentLibrary === lib.name ? 'active' : '';
+        html += `<div class="app-sidebar-item ${active}" onclick="window.app.selectLibrary('${lib.name}')">${lib.name}</div>`;
+      }
     }
 
     html += '</div>';
     html += '<div class="app-sidebar-section">';
-    html += '<div class="app-sidebar-title">Share Links</div>';
-    html += '<a class="app-sidebar-item" onclick="window.app.currentView = \'admin\'; window.app.render();">View Shares</a>';
-    html += '<a class="app-sidebar-item" onclick="window.app.currentView = \'admin\'; window.app.currentTab = \'libraries\'; window.app.render();">Manage Libraries</a>';
+    html += '<div class="app-sidebar-title">Menu</div>';
+    html += `<div class="app-sidebar-item" onclick="window.app.currentView = 'admin'; window.app.currentTab = 'shares'; window.app.loadShares().then(() => window.app.render());">Active Shares</div>`;
+    html += `<div class="app-sidebar-item" onclick="window.app.currentView = 'admin'; window.app.currentTab = 'libraries'; window.app.render();">Manage Libraries</div>`;
     html += '</div></div>';
 
     return html;
@@ -280,71 +340,69 @@ class StorServeApp {
     return `
       <div class="nav-tabs">
         <div class="nav-tab ${this.currentView === 'browse' ? 'active' : ''}" onclick="window.app.currentView = 'browse'; window.app.render();">Browse</div>
-        <div class="nav-tab ${this.currentView === 'admin' ? 'active' : ''}" onclick="window.app.currentView = 'admin'; window.app.currentTab = 'shares'; window.app.render();">Shares</div>
+        <div class="nav-tab ${this.currentView === 'admin' && this.currentTab === 'shares' ? 'active' : ''}" onclick="window.app.currentView = 'admin'; window.app.currentTab = 'shares'; window.app.loadShares().then(() => window.app.render());">Shares</div>
         <div class="nav-tab ${this.currentView === 'admin' && this.currentTab === 'libraries' ? 'active' : ''}" onclick="window.app.currentView = 'admin'; window.app.currentTab = 'libraries'; window.app.render();">Libraries</div>
       </div>
     `;
   }
 
-  renderBrowse() {
+  renderBrowseView() {
     if (!this.currentLibrary) {
       return `<div class="empty-state"><div class="empty-state-icon">📂</div><p>Select a library to browse</p></div>`;
     }
 
-    const items = this.loadBrowseSync();
+    return `<div id="browse-container"></div>`;
+  }
+
+  async renderBrowseViewAsync() {
+    if (!this.currentLibrary) {
+      return `<div class="empty-state"><div class="empty-state-icon">📂</div><p>Select a library to browse</p></div>`;
+    }
+
+    const items = await this.loadBrowseDirectory();
     const breadcrumb = this.renderBreadcrumb();
 
     let html = breadcrumb;
-    html += '<div class="file-grid" id="file-grid">';
 
     if (items.length === 0) {
-      html += '<div class="empty-state"><p>No files</p></div>';
+      html += '<div class="empty-state"><p>No files in this directory</p></div>';
     } else {
+      html += '<div class="file-grid">';
       for (const item of items) {
         const icon = item.type === 'directory' ? '📁' : '📄';
-        const size = item.size ? `${(item.size / 1024 / 1024).toFixed(1)}MB` : '';
+        const size = item.size ? `${(item.size / 1024 / 1024).toFixed(1)} MB` : '';
+        const sizeHtml = size ? `<div class="file-item-meta"><span>${size}</span></div>` : '';
         html += `
-          <div class="file-item" onclick="window.app.browsePath('${item.name}')">
+          <div class="file-item">
             <div class="file-item-actions">
-              <button class="file-action-btn" onclick="event.stopPropagation(); window.app.shareFile('${item.name}|${item.type}'); return false;" title="Share">🔗</button>
+              <button class="file-action-btn" onclick="event.stopPropagation(); window.app.shareFile('${item.name.replace(/'/g, "\\'")}', '${item.type}');" title="Share">🔗</button>
             </div>
-            <div class="file-item-icon">${icon}</div>
-            <div class="file-item-name">${item.name}</div>
-            ${size ? `<div class="file-item-meta"><span>${size}</span></div>` : ''}
+            <div class="file-item-icon" style="cursor: ${item.type === 'directory' ? 'pointer' : 'default'};" onclick="${item.type === 'directory' ? `window.app.browsePath('${item.name.replace(/'/g, "\\'")}', '${item.type}')` : ''}">${icon}</div>
+            <div class="file-item-name" style="cursor: ${item.type === 'directory' ? 'pointer' : 'default'};" onclick="${item.type === 'directory' ? `window.app.browsePath('${item.name.replace(/'/g, "\\'")}', '${item.type}')` : ''}">${item.name}</div>
+            ${sizeHtml}
           </div>
         `;
       }
+      html += '</div>';
     }
 
-    html += '</div>';
     return html;
-  }
-
-  loadBrowseSync() {
-    if (!this.currentLibrary) return [];
-    const mockData = [
-      { name: 'Sample Folder', type: 'directory', size: null },
-      { name: 'sample.txt', type: 'file', size: 1024 }
-    ];
-    return mockData;
   }
 
   renderBreadcrumb() {
     let html = '<div class="breadcrumb">';
-    html += `<span class="breadcrumb-item" onclick="window.app.currentPath = []; window.app.render();">Home</span>`;
+    html += `<span class="breadcrumb-item" onclick="window.app.goHome(); window.app.render();" style="cursor: pointer;">Home</span>`;
 
     for (let i = 0; i < this.currentPath.length; i++) {
       html += `<span class="breadcrumb-separator">/</span>`;
-      html += `<span class="breadcrumb-item" onclick="window.app.currentPath = window.app.currentPath.slice(0, ${i + 1}); window.app.render();">${this.currentPath[i]}</span>`;
+      html += `<span class="breadcrumb-item" onclick="window.app.goToBreadcrumb(${i}); window.app.render();" style="cursor: pointer;">${this.currentPath[i]}</span>`;
     }
 
     html += '</div>';
     return html;
   }
 
-  renderAdmin() {
-    if (!this.currentTab) this.currentTab = 'shares';
-
+  renderAdminView() {
     if (this.currentTab === 'shares') {
       return this.renderSharesTab();
     } else {
@@ -353,15 +411,15 @@ class StorServeApp {
   }
 
   renderSharesTab() {
-    const shares = Object.entries(this.shares);
+    const shareEntries = Object.entries(this.shares);
 
-    if (shares.length === 0) {
+    if (shareEntries.length === 0) {
       return `<div class="empty-state"><p>No active shares</p></div>`;
     }
 
     let html = '<table class="shares-table"><thead><tr><th>Label</th><th>Type</th><th>Created</th><th>Expires</th><th>Action</th></tr></thead><tbody>';
 
-    for (const [token, share] of shares) {
+    for (const [token, share] of shareEntries) {
       const created = new Date(share.createdAt).toLocaleDateString();
       const expires = share.expiresAt ? new Date(share.expiresAt).toLocaleDateString() : 'Never';
       html += `
@@ -389,7 +447,7 @@ class StorServeApp {
         <form id="library-form">
           <div class="form-row">
             <input type="text" id="lib-name" placeholder="Library name (e.g., Movies)" required>
-            <input type="text" id="lib-path" placeholder="Full path (e.g., D:\\Movies)" required>
+            <input type="text" id="lib-path" placeholder="Full path (e.g., D:\\\\Movies)" required>
             <button type="submit" class="btn btn-primary">Add</button>
           </div>
         </form>
@@ -418,42 +476,19 @@ class StorServeApp {
     html += '</div>';
     return html;
   }
-
-  setupAppForm() {
-    const libForm = document.getElementById('library-form');
-    if (libForm) {
-      libForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const name = document.getElementById('lib-name').value;
-        const path = document.getElementById('lib-path').value;
-        this.addLibrary(name, path);
-      });
-    }
-
-    const modal = document.getElementById('modal-share');
-    const closeBtn = modal.querySelector('.modal-close');
-    const submitBtn = document.getElementById('share-submit');
-    const cancelBtn = document.getElementById('share-cancel');
-
-    closeBtn.onclick = () => this.hideShareModal();
-    cancelBtn.onclick = () => this.hideShareModal();
-    submitBtn.onclick = () => this.createShare();
-
-    document.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        this.hideShareModal();
-      }
-    });
-  }
-
-  copyShareLink(token) {
-    const protocol = window.location.protocol;
-    const host = window.location.host;
-    const url = `${protocol}//${host}/s/${token}`;
-    navigator.clipboard.writeText(url).then(() => {
-      alert('Share link copied!');
-    });
-  }
 }
 
 window.app = new StorServeApp();
+
+// After render completes, handle async browse content
+const originalRender = window.app.render;
+window.app.render = async function() {
+  originalRender.call(this);
+  if (this.currentView === 'browse' && this.currentLibrary) {
+    const container = document.getElementById('browse-container');
+    if (container) {
+      const content = await this.renderBrowseViewAsync();
+      container.innerHTML = content;
+    }
+  }
+};

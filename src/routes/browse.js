@@ -3,7 +3,7 @@ const config = require('../config');
 const libraries = require('../libraries');
 const pathGuard = require('../middleware/pathGuard');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
 router.get('/libraries', (req, res) => {
   const cfg = config.load();
@@ -13,7 +13,7 @@ router.get('/libraries', (req, res) => {
   res.json(cfg.libraries.map(lib => ({ name: lib.name })));
 });
 
-router.get('/browse/:lib/*', pathGuard, (req, res) => {
+router.get('/:lib/*', pathGuard, (req, res) => {
   const { lib } = req.params;
   const relPath = req.params[0] || '';
 

@@ -4,7 +4,7 @@ const config = require('../config');
 const libraries = require('../libraries');
 const pathGuard = require('../middleware/pathGuard');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
 router.post('/', (req, res) => {
   const { library, relPath, type, label, expiresAt } = req.body;
@@ -34,9 +34,9 @@ router.delete('/:token', (req, res) => {
   res.json({ success: true });
 });
 
-router.get('/public/:token', pathGuard, (req, res) => {
+router.get('/:token/*', (req, res) => {
   const { token } = req.params;
-  const relPath = req.query.path || '';
+  const relPath = req.params[0] || '';
 
   const share = shares.getShare(token);
   if (!share) {

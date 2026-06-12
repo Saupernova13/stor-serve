@@ -2,7 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const config = require('../config');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
 router.post('/libraries', (req, res) => {
   const { name, path } = req.body;

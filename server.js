@@ -58,21 +58,20 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.post('/api/auth/login', require('./src/routes/auth'));
-app.post('/api/auth/logout', require('./src/routes/auth'));
+const authRouter = require('./src/routes/auth');
+const browseRouter = require('./src/routes/browse');
+const sharesRouter = require('./src/routes/shares');
+const adminRouter = require('./src/routes/admin');
 
-app.get('/api/libraries', requireAuth, require('./src/routes/browse'));
-app.get('/api/browse/:lib/*', requireAuth, require('./src/routes/browse'));
+app.use('/api/auth', authRouter);
 
-app.post('/api/shares', requireAuth, require('./src/routes/shares'));
-app.get('/api/shares', requireAuth, require('./src/routes/shares'));
-app.delete('/api/shares/:token', requireAuth, require('./src/routes/shares'));
+app.get('/s/:token/*', require('./src/routes/shares'));
 
-app.get('/s/:token', require('./src/routes/shares'));
-app.get('/s/:token/', require('./src/routes/shares'));
+app.use('/api', requireAuth);
+app.use('/api/browse', browseRouter);
+app.use('/api/shares', sharesRouter);
+app.use('/api/admin', adminRouter);
 
-app.post('/api/admin/libraries', requireAuth, require('./src/routes/admin'));
-app.delete('/api/admin/libraries/:name', requireAuth, require('./src/routes/admin'));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
