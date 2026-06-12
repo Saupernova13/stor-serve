@@ -1,0 +1,25 @@
+{
+  "name": "stor-serve",
+  "version": "1.0.0",
+  "description": "Professional file storage and sharing web app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "storage",
+    "file-sharing",
+    "web-app"
+  ],
+  "author": "Sauraav Jayrajh",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5"
+  }
+}
