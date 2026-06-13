@@ -4,3 +4,6 @@ data/shares.json
 .env.local
 *.log
 logs/
+
+# Default public drop folder — user files live here, never commit them
+shared/

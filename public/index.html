@@ -3,35 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>stor-serve - File Storage & Sharing</title>
-  <link rel="stylesheet" href="/style.css">
+  <title>Files</title>
+  <link rel="stylesheet" href="/public.css">
 </head>
 <body>
-  <div id="app"></div>
-
-  <div id="modal-share" class="modal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Create Share Link</h2>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Label:</label>
-          <input type="text" id="share-label" placeholder="e.g., My Favorite Movie">
-        </div>
-        <div class="form-group">
-          <label>Expiration (optional):</label>
-          <input type="date" id="share-expiry">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button id="share-submit" class="btn btn-primary">Create Share</button>
-        <button id="share-cancel" class="btn">Cancel</button>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <span class="brand-name">Files</span>
+      </a>
+      <div class="site-header-actions">
+        <input id="search" class="search" type="search" placeholder="Search this folder" autocomplete="off" aria-label="Search this folder">
       </div>
     </div>
-  </div>
+  </header>
 
-  <script src="/app.js"></script>
+  <nav id="libraries" class="libraries" aria-label="Collections"></nav>
+
+  <main class="container">
+    <div id="breadcrumb" class="breadcrumb" aria-label="Breadcrumb"></div>
+    <div id="content"></div>
+  </main>
+
+  <footer class="site-footer">
+    <span>Served privately · no account needed to download</span>
+  </footer>
+
+  <script src="/public.js"></script>
 </body>
 </html>
