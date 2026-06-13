@@ -19,10 +19,16 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'blob:']
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      // Served as plain HTTP on the LAN/tailnet (TLS is terminated at Cloudflare),
+      // so do NOT force-upgrade subresource requests to HTTPS.
+      upgradeInsecureRequests: null
     }
-  }
+  },
+  // Origin speaks plain HTTP; HSTS would wrongly force browsers to HTTPS.
+  hsts: false
 }));
 
 const sessionMiddleware = session({
