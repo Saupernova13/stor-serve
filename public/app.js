@@ -41,7 +41,7 @@ class StorServeApp {
 
   async loadLibraries() {
     try {
-      const res = await fetch('/api/libraries');
+      const res = await fetch('/api/browse/libraries');
       this.libraries = await res.json();
     } catch (e) {
       console.error('Error loading libraries:', e);

@@ -37,8 +37,11 @@ const sessionMiddleware = session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    // The Node origin always speaks plain HTTP (direct on the tailnet, and
+    // HTTP behind Cloudflare since TLS is terminated at the edge). A `secure`
+    // cookie would never be issued, so the session could never persist.
+    secure: false,
+    sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000
   }
 });
