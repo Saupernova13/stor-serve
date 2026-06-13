@@ -2,7 +2,7 @@
 
 $TaskName = "stor-serve"
 $TaskDescription = "Start stor-serve file storage service on logon"
-$ScriptPath = "C:\utils\stor-serve\start.bat"
+$ScriptPath = "C:\utils\stor-serve\start-silent.vbs"
 $User = "RaaViVi"
 
 $TaskExists = $null -ne (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)
@@ -14,7 +14,7 @@ if ($TaskExists) {
 
 Write-Host "Creating scheduled task '$TaskName'..."
 
-$Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$ScriptPath`""
+$Action = New-ScheduledTaskAction -Execute "cscript.exe" -Argument "`"$ScriptPath`""
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $User
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $Principal = New-ScheduledTaskPrincipal -UserId $User -RunLevel Highest
