@@ -13,6 +13,7 @@ const PORT = process.env.PORT || 3444;
 config.ensureDataDir();
 
 const cfg = config.getOrCreate('default');
+config.ensureDefaultLibrary(cfg);
 
 app.use(helmet({
   contentSecurityPolicy: {
@@ -70,20 +71,32 @@ app.use(express.static(path.join(__dirname, 'public')));
 const authRouter = require('./src/routes/auth');
 const browseRouter = require('./src/routes/browse');
 const sharesRouter = require('./src/routes/shares');
+const publicRouter = require('./src/routes/public');
 const adminRouter = require('./src/routes/admin');
 
+// --- Public, no-auth surface ---
 app.use('/api/auth', authRouter);
+app.use('/api/public', publicRouter);
 
-app.get('/s/:token/*', require('./src/routes/shares'));
+// Public share links (token-based, work with or without a trailing path).
+app.get('/s/:token', sharesRouter.publicShareHandler);
+app.get('/s/:token/*', sharesRouter.publicShareHandler);
 
+// --- Authenticated admin surface ---
 app.use('/api', requireAuth);
 app.use('/api/browse', browseRouter);
 app.use('/api/shares', sharesRouter);
 app.use('/api/admin', adminRouter);
 
-
+// --- Pages ---
+// Public-facing storefront: browse + download public libraries, no login.
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Admin dashboard SPA (auth handled client-side against the API).
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 app.get('*', (req, res) => {

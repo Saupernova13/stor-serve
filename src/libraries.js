@@ -1,12 +1,48 @@
 const fs = require('fs');
 const path = require('path');
 
-function resolveLibraryPath(libraryRoot, relPath) {
-  const normalized = path.normalize(relPath || '');
-  const resolved = path.resolve(libraryRoot, normalized);
-  const library = path.resolve(libraryRoot);
+// Minimal extension -> content-type map for inline preview of common types.
+// Anything not listed is served as a download (application/octet-stream).
+const MIME_TYPES = {
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/plain; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac'
+};
 
-  if (!resolved.startsWith(library)) {
+function mimeType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
+function isPreviewable(filename) {
+  return Object.prototype.hasOwnProperty.call(MIME_TYPES, path.extname(filename).toLowerCase());
+}
+
+// Resolve a relative path inside a library root, refusing anything that would
+// escape the root (path traversal). Requires the resolved path to be the root
+// itself or sit beneath it on a real separator boundary.
+function resolveLibraryPath(libraryRoot, relPath) {
+  const root = path.resolve(libraryRoot);
+  const resolved = path.resolve(root, path.normalize(relPath || ''));
+
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     return null;
   }
 
@@ -29,12 +65,16 @@ function listDirectory(libraryRoot, relPath) {
   }
 
   const entries = fs.readdirSync(fullPath, { withFileTypes: true });
-  const items = entries.map(entry => ({
-    name: entry.name,
-    type: entry.isDirectory() ? 'directory' : 'file',
-    size: entry.isFile() ? fs.statSync(path.join(fullPath, entry.name)).size : null,
-    modified: fs.statSync(path.join(fullPath, entry.name)).mtime.toISOString()
-  }));
+  const items = entries.map(entry => {
+    const entryStat = fs.statSync(path.join(fullPath, entry.name));
+    return {
+      name: entry.name,
+      type: entry.isDirectory() ? 'directory' : 'file',
+      size: entry.isFile() ? entryStat.size : null,
+      modified: entryStat.mtime.toISOString(),
+      previewable: entry.isFile() ? isPreviewable(entry.name) : false
+    };
+  });
 
   items.sort((a, b) => {
     if (a.type !== b.type) {
@@ -80,18 +120,20 @@ function readFile(libraryRoot, relPath) {
     return null;
   }
 
-  try {
-    const stream = fs.createReadStream(fullPath);
-    return { stream, size: stat.size, name: path.basename(fullPath) };
-  } catch (e) {
-    console.error('Error reading file:', e);
-    return null;
-  }
+  return {
+    path: fullPath,
+    size: stat.size,
+    name: path.basename(fullPath),
+    mime: mimeType(fullPath),
+    previewable: isPreviewable(fullPath)
+  };
 }
 
 module.exports = {
   resolveLibraryPath,
   listDirectory,
   getFileInfo,
-  readFile
+  readFile,
+  mimeType,
+  isPreviewable
 };

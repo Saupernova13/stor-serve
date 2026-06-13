@@ -23,6 +23,10 @@ router.post('/login', (req, res) => {
   res.json({ success: true });
 });
 
+router.get('/status', (req, res) => {
+  res.json({ authenticated: !!(req.session && req.session.authenticated) });
+});
+
 router.post('/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {

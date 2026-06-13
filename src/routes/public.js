@@ -5,6 +5,8 @@ const { serveFile } = require('../download');
 
 const router = express.Router({ mergeParams: true });
 
+// Reject library ids / paths that try to escape. Library ids are hex tokens, so
+// a strict character check is safe and cheap.
 function badId(id) {
   return !id || !/^[a-f0-9]+$/i.test(id);
 }
@@ -13,23 +15,17 @@ function badPath(p) {
   return p.includes('..') || p.includes('\\');
 }
 
-// Admin library list — includes the public flag so the dashboard can show it.
+// List only the libraries the owner has marked public.
 router.get('/libraries', (req, res) => {
   const cfg = config.load();
-  if (!cfg || !cfg.libraries) {
-    return res.json([]);
-  }
-  config.normalizeLibraries(cfg);
-  res.json(cfg.libraries.map(lib => ({
-    id: lib.id,
-    name: lib.name,
-    path: lib.path,
-    public: !!lib.public
-  })));
+  const libs = config.getPublicLibraries(cfg || {});
+  res.json(libs.map(lib => ({ id: lib.id, name: lib.name })));
 });
 
-router.get('/:lib', handleBrowse);
-router.get('/:lib/*', handleBrowse);
+// Browse a directory or download/preview a file within a public library.
+// ?inline=1 serves previewable files in the browser instead of downloading.
+router.get('/browse/:lib', handleBrowse);
+router.get('/browse/:lib/*', handleBrowse);
 
 function handleBrowse(req, res) {
   const { lib } = req.params;
@@ -43,13 +39,9 @@ function handleBrowse(req, res) {
   }
 
   const cfg = config.load();
-  if (!cfg) {
-    return res.status(500).json({ error: 'Server not initialized' });
-  }
-
-  const libConfig = config.getLibrary(cfg, lib);
+  const libConfig = config.getPublicLibrary(cfg || {}, lib);
   if (!libConfig) {
-    return res.status(404).json({ error: 'Library not found' });
+    return res.status(404).json({ error: 'Not found' });
   }
 
   const fileInfo = libraries.getFileInfo(libConfig.path, relPath);
@@ -60,14 +52,14 @@ function handleBrowse(req, res) {
   if (fileInfo.type === 'directory') {
     const items = libraries.listDirectory(libConfig.path, relPath);
     if (items === null) {
-      return res.status(404).json({ error: 'Directory not found' });
+      return res.status(404).json({ error: 'Not found' });
     }
-    return res.json({ type: 'directory', items, name: fileInfo.name });
+    return res.json({ type: 'directory', name: fileInfo.name, items });
   }
 
   const fileMeta = libraries.readFile(libConfig.path, relPath);
   if (!fileMeta) {
-    return res.status(404).json({ error: 'File not found' });
+    return res.status(404).json({ error: 'Not found' });
   }
 
   const inline = req.query.inline === '1' && fileMeta.previewable;

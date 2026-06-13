@@ -2,9 +2,11 @@ const express = require('express');
 const shares = require('../shares');
 const config = require('../config');
 const libraries = require('../libraries');
-const pathGuard = require('../middleware/pathGuard');
+const { serveFile } = require('../download');
 
 const router = express.Router({ mergeParams: true });
+
+// --- Authenticated management endpoints (mounted under /api/shares) ---
 
 router.post('/', (req, res) => {
   const { library, relPath, type, label, expiresAt } = req.body;
@@ -24,19 +26,25 @@ router.post('/', (req, res) => {
 });
 
 router.get('/', (req, res) => {
-  const list = shares.listShares();
-  res.json(list);
+  res.json(shares.listShares());
 });
 
 router.delete('/:token', (req, res) => {
-  const { token } = req.params;
-  shares.deleteShare(token);
+  shares.deleteShare(req.params.token);
   res.json({ success: true });
 });
 
-router.get('/:token/*', (req, res) => {
+module.exports = router;
+
+// --- Public share-link handler (mounted directly on the app at /s) ---
+// Exported separately so server.js can wire it before auth middleware.
+function publicShareHandler(req, res) {
   const { token } = req.params;
   const relPath = req.params[0] || '';
+
+  if (relPath.includes('..') || relPath.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid path' });
+  }
 
   const share = shares.getShare(token);
   if (!share) {
@@ -63,15 +71,13 @@ router.get('/:token/*', (req, res) => {
     return res.json({ type: 'directory', items, name: fileInfo.name });
   }
 
-  const fileStream = libraries.readFile(libConfig.path, targetPath);
-  if (!fileStream) {
+  const fileMeta = libraries.readFile(libConfig.path, targetPath);
+  if (!fileMeta) {
     return res.status(404).json({ error: 'File not found' });
   }
 
-  res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Length', fileStream.size);
-  res.setHeader('Content-Disposition', `attachment; filename="${fileStream.name}"`);
-  fileStream.stream.pipe(res);
-});
+  const inline = req.query.inline === '1' && fileMeta.previewable;
+  return serveFile(req, res, fileMeta, { inline });
+}
 
-module.exports = router;
+module.exports.publicShareHandler = publicShareHandler;
