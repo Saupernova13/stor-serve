@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>stor-serve · Admin</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="modal-share" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Create Share Link</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Label:</label>
+          <input type="text" id="share-label" placeholder="e.g., My Favorite Movie">
+        </div>
+        <div class="form-group">
+          <label>Expiration (optional):</label>
+          <input type="date" id="share-expiry">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="share-submit" class="btn btn-primary">Create Share</button>
+        <button id="share-cancel" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
