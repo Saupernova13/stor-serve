@@ -166,6 +166,8 @@
           actions += '<button class="action" data-act="preview" data-name="' + esc(it.name) + '">' + ICONS.eye + '<span>Preview</span></button>';
         }
         actions += '<button class="action primary" data-act="download" data-name="' + esc(it.name) + '">' + ICONS.download + '<span>Download</span></button>';
+      } else if (it.type === 'directory') {
+        actions += '<button class="action primary" data-act="download-zip" data-name="' + esc(it.name) + '">' + ICONS.download + '<span>Download Folder</span></button>';
       }
 
       var clickable = it.type === 'directory' ? ' clickable' : '';
@@ -197,8 +199,17 @@
         e.stopPropagation();
         var name = btn.getAttribute('data-name');
         var url = apiPath(state.path.concat([name]));
-        if (btn.getAttribute('data-act') === 'preview') {
+        var act = btn.getAttribute('data-act');
+        if (act === 'preview') {
           window.open(url + '?inline=1', '_blank', 'noopener');
+        } else if (act === 'download-zip') {
+          // Download folder as zip via a temporary anchor.
+          var a = document.createElement('a');
+          a.href = url + '?download=zip';
+          a.download = name + '.zip';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
         } else {
           // Force download via a temporary anchor.
           var a = document.createElement('a');

@@ -1,4 +1,63 @@
 const fs = require('fs');
+const path = require('path');
+const archiver = require('archiver');
+
+// Stream a directory as a ZIP file without storing it locally.
+// Uses archiver to build the ZIP on-the-fly, piping directly to the response.
+//   dirPath: absolute path to the directory to zip
+//   dirName: name of the directory (used for the ZIP filename)
+function serveDirectory(req, res, dirPath, dirName) {
+  const safeName = dirName.replace(/[^a-z0-9._\- ]/gi, '_').replace(/\s+/g, '_');
+  const zipName = `${safeName}.zip`;
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${zipName}"; filename*=UTF-8''${encodeURIComponent(zipName)}`);
+
+  const archive = archiver('zip', { zlib: { level: 6 } });
+
+  // Pipe archive directly to response
+  archive.pipe(res);
+
+  // Handle errors
+  archive.on('error', (err) => {
+    console.error('Archive error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to create archive' });
+    } else {
+      res.end();
+    }
+  });
+
+  res.on('error', (err) => {
+    console.error('Response error:', err);
+    archive.abort();
+  });
+
+  // Recursively add directory contents
+  const addToArchive = (currentPath, arcPath) => {
+    if (!fs.existsSync(currentPath)) return;
+    const stat = fs.statSync(currentPath);
+
+    if (stat.isDirectory()) {
+      const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+      entries.forEach((entry) => {
+        const fullPath = path.join(currentPath, entry.name);
+        const nextArcPath = arcPath ? path.join(arcPath, entry.name) : entry.name;
+
+        if (entry.isDirectory()) {
+          addToArchive(fullPath, nextArcPath);
+        } else {
+          archive.file(fullPath, { name: nextArcPath });
+        }
+      });
+    } else {
+      archive.file(currentPath, { name: arcPath || path.basename(currentPath) });
+    }
+  };
+
+  addToArchive(dirPath, '');
+  archive.finalize();
+}
 
 // Stream a resolved file to the response. Supports HTTP Range requests so that
 // media (video/audio) can be seeked and previewed inline in the browser.
@@ -48,4 +107,4 @@ function serveFile(req, res, fileMeta, opts = {}) {
   return fs.createReadStream(fileMeta.path).pipe(res);
 }
 
-module.exports = { serveFile };
+module.exports = { serveFile, serveDirectory };

@@ -1,7 +1,7 @@
 const express = require('express');
 const config = require('../config');
 const libraries = require('../libraries');
-const { serveFile } = require('../download');
+const { serveFile, serveDirectory } = require('../download');
 
 const router = express.Router({ mergeParams: true });
 
@@ -50,6 +50,15 @@ function handleBrowse(req, res) {
   }
 
   if (fileInfo.type === 'directory') {
+    // Check for zip download request
+    if (req.query.download === 'zip') {
+      const fullPath = libraries.resolveLibraryPath(libConfig.path, relPath);
+      if (!fullPath) {
+        return res.status(400).json({ error: 'Invalid path' });
+      }
+      return serveDirectory(req, res, fullPath, fileInfo.name);
+    }
+
     const items = libraries.listDirectory(libConfig.path, relPath);
     if (items === null) {
       return res.status(404).json({ error: 'Not found' });

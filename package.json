@@ -20,6 +20,7 @@
     "helmet": "^7.1.0",
     "express-rate-limit": "^7.1.5",
     "bcryptjs": "^2.4.3",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "archiver": "^6.0.0"
   }
 }
