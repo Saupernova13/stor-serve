@@ -27,6 +27,7 @@ class StorServeApp {
       this.render();
     } catch (error) {
       alert('Login failed: ' + error.message);
+      this.render();
     }
   }
 
