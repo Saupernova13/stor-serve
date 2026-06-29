@@ -2,6 +2,7 @@ node_modules/
 data/config.json
 data/shares.json
 .env.local
+env.local.bat
 *.log
 logs/
 

@@ -1,8 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set PROJECT_DIR=C:\utils\stor-serve
-cd /d %PROJECT_DIR%
+cd /d "%~dp0"
+
+REM Per-tree environment (PORT, NODE_ENV). Gitignored; differs dev vs prod.
+if exist "%~dp0env.local.bat" call "%~dp0env.local.bat"
 
 :restart
 node server.js
