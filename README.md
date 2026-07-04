@@ -1,220 +1,132 @@
 # stor-serve
 
-Professional file storage and sharing web app. Serve large files from your PC without uploading to cloud providers. Share files via public links that expire optionally.
+Personal file storage and sharing web app. Serves large files straight from
+this PC — no cloud uploads — with a public storefront for anyone with the link
+and a password-protected admin dashboard.
 
-**Live at:** `https://storage.raavivi.co.za`
+**Live at:** `https://storage.raavivi.co.za` (TLS terminates at Cloudflare; the
+Node origin speaks plain HTTP)
+
+## Two surfaces
+
+| URL | Page | Audience |
+|-----|------|----------|
+| `/` | Public storefront (`public/index.html` + `public.js`) | Anyone — browses libraries marked **public**, downloads files, ZIPs folders |
+| `/admin` | Admin dashboard (`public/admin.html` + `app.js`) | Password login — manage libraries, browse everything, create share links |
 
 ## Features
 
-- **Browser-based file browsing** — navigate your local file system through an intuitive web UI
-- **Multi-library support** — organize files into named libraries (e.g., Movies, Games, Documents)
-- **Share links** — generate token-based public links for any file or folder
-- **Optional expiry** — shares can expire on a specified date
-- **Session auth** — password-protected admin panel
-- **Responsive design** — works on desktop and mobile
-- **No database** — lightweight JSON-based config and token storage
-- **Path security** — automatic protection against directory traversal attacks
-- **Rate limiting** — built-in login and general request rate limiting
+- **Multi-library** — named libraries pointing at any local folder, each with a
+  stable URL-safe `id` and a **public/private** toggle
+- **Public storefront** — public libraries are browsable/downloadable with no
+  login; a default public drop folder is created on first run
+- **ZIP downloads** — any folder streams as a ZIP on the fly (`archiver`, no
+  temp files) via `?download=zip`
+- **Share links** — 256-bit token links (`/s/:token/...`) for private files or
+  folders, with optional expiry
+- **Session auth** — bcrypt password (changeable from the admin UI), rate-limited
+  login
+- **No database** — `data/config.json` + `data/shares.json`
+- **Path security** — all paths normalized and confined to their library root
 
-## Quick Start
+## Dev / prod
 
-### Prerequisites
+| Instance | Tree | Port | Host |
+|---|---|---|---|
+| prod | `C:\prod\stor-serve` (git-free artifact dir) | 3444 | storage.raavivi.co.za |
+| dev | `C:\Users\RaaViVi\Documents\github\stor-serve` | 3445 | storage-dev.raavivi.co.za |
 
-- Node.js 16+
+- Port comes from `PORT` (via `env.local.bat` per tree; default 3444).
+- Deploys are **artifact** deploys via `release.ps1 stor-serve` (ecosystem-deploy):
+  the built product ships to prod, and prod's `data/` and 18 GB `shared/` are
+  never touched. See `.ecosystem/deploy/deploy.md`.
+- Prod is not a git checkout — do all code work in the dev tree.
 
-### Installation
-
-```bash
-cd C:\utils\stor-serve
-npm install
-```
-
-### Running
-
-#### Development
-
-```bash
-npm start
-```
-
-Server will start on `http://localhost:3444`
-
-#### Windows Startup (Automatic)
-
-Run as Administrator once:
+## Quick start (dev)
 
 ```powershell
-cd C:\utils\stor-serve
-.\setup-startup.ps1
+cd C:\Users\RaaViVi\Documents\github\stor-serve
+npm install
+npm start          # http://localhost:3444 (or PORT from env.local.bat)
 ```
 
-Service will then start automatically on next logon.
-
-### First Run
-
-1. Navigate to `http://localhost:3444`
-2. Log in with password: `default`
-3. Go to **Libraries** tab
-4. Add your first library (name + full folder path)
-5. Click Browse and navigate files
-6. Share files by clicking the 🔗 icon on any file/folder
-
-## Configuration
-
-All configuration is stored in `data/config.json` and `data/shares.json`. Edit via the web UI.
-
-**config.json** structure:
-```json
-{
-  "passwordHash": "bcrypt hash of password",
-  "libraries": [
-    { "name": "Movies", "path": "D:\\Movies" }
-  ],
-  "settings": {
-    "sessionSecret": "random 64-char hex",
-    "maxSharesPerToken": 1000
-  }
-}
-```
-
-## Project Structure
-
-```
-src/
-  config.js           - Configuration loader/saver
-  shares.js           - Share token system
-  libraries.js        - Safe file system access
-  middleware/
-    requireAuth.js    - Session auth middleware
-    pathGuard.js      - Path validation middleware
-  routes/
-    auth.js           - Login/logout endpoints
-    browse.js         - File browsing endpoints
-    shares.js         - Share link endpoints (public + private)
-    admin.js          - Library management endpoints
-public/
-  index.html          - SPA shell
-  app.js              - Vanilla JS client-side app
-  style.css           - Responsive CSS (mobile-first, dark theme)
-data/
-  config.json         - Libraries and password hash (auto-created)
-  shares.json         - Active share tokens (auto-created)
-server.js             - Express app entry point
-package.json          - Dependencies
-start.bat             - Windows restart-loop launcher
-setup-startup.ps1     - Scheduled task installer
-```
+First run auto-creates `data/config.json`, a session secret, the default
+public drop folder, and the admin password `default` — change it from the
+admin UI (`/admin` → password section).
 
 ## API
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/auth/login` | No | Log in (sets session cookie) |
-| POST | `/api/auth/logout` | Session | Log out |
-| GET | `/api/libraries` | Session | List all libraries |
-| GET | `/api/browse/:lib/:path*` | Session | Browse/download authenticated |
-| POST | `/api/shares` | Session | Create share link |
-| GET | `/api/shares` | Session | List active shares |
-| DELETE | `/api/shares/:token` | Session | Revoke share link |
-| GET | `/s/:token/:path*` | Public | Browse/download via share |
-| POST | `/api/admin/libraries` | Session | Add library |
-| DELETE | `/api/admin/libraries/:name` | Session | Remove library |
+Public (no auth):
 
-## Security
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/public/libraries` | List public libraries |
+| GET | `/api/public/browse/:lib[/*]` | Browse a public library; file paths download (`?inline=1` previews, `?download=zip` zips a folder) |
+| GET | `/s/:token[/*]` | Browse/download via a share link |
+| POST | `/api/auth/login` | Log in (sets session cookie) |
+| GET | `/api/auth/status` | Session check |
+| POST | `/api/auth/logout` | Log out (destroys own session) |
 
-- **Helmet.js** — CSP, HSTS, X-Frame-Options, etc.
-- **Path validation** — all paths normalized and verified to stay within library root
-- **Rate limiting** — 10 login attempts/15 min; 500 general requests/15 min
-- **Session cookies** — `httpOnly`, `secure` (production), `sameSite: strict`
-- **Share tokens** — 256-bit random (64-char hex)
-- **Password hashing** — bcryptjs with salt rounds 12
+Session-authed (`/api` behind `requireAuth` except `/api/auth` and `/api/public`):
 
-## Cloud Deployment
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/browse/libraries` | List all libraries (public + private) |
+| GET | `/api/browse/:lib[/*]` | Browse/download any library |
+| POST / GET / DELETE | `/api/shares[/:token]` | Create / list / revoke share links |
+| POST | `/api/admin/libraries` | Add library `{name, path, public}` |
+| DELETE | `/api/admin/libraries/:id` | Remove library (by id) |
+| GET | `/api/admin/public-dir` | Default public drop folder path |
+| POST | `/api/admin/password` | Change the admin password |
 
-Exposed via Cloudflare Tunnel to `https://storage.raavivi.co.za`
+## Security posture
 
-Tunnel config in `C:\Users\RaaViVi\.cloudflared\config.yml`:
+- **Helmet** with CSP; **HSTS off** and `upgradeInsecureRequests` disabled on
+  purpose — the origin is plain HTTP (TLS at Cloudflare), so forcing HTTPS at
+  the origin would break LAN/tailnet access.
+- **Session cookie**: `httpOnly`, `sameSite: lax`, `secure: false` — same
+  reason; a secure-only cookie would never be issued over the HTTP origin.
+- **Rate limiting** on login and general requests; bcrypt (12 rounds) for the
+  password; share tokens are 64-char hex.
+
+## Project structure
+
+```
+server.js             Express entry point (helmet, session, rate limits, routers)
+src/
+  config.js           Config load/save, library ids, default public dir
+  shares.js           Share token system
+  libraries.js        Safe file system access
+  download.js         File serving + streaming ZIP (archiver)
+  middleware/         requireAuth, pathGuard
+  routes/             auth, browse, public, shares, admin
+public/
+  index.html/public.js/public.css    Public storefront
+  admin.html/app.js/style.css        Admin dashboard
+  favicon.svg, icons/
+data/                 config.json + shares.json (gitignored, auto-created)
+start.bat             Restart-loop launcher (sources env.local.bat)
+```
+
+## Cloudflare
 
 ```yaml
 - hostname: storage.raavivi.co.za
   service: http://localhost:3444
+- hostname: storage-dev.raavivi.co.za
+  service: http://localhost:3445
 ```
 
-After editing, deploy with:
-
-```powershell
-C:\Users\RaaViVi\.ecosystem\cloudflare\deploy-tunnel-config.ps1
-```
+After editing `config.yml`, deploy with
+`C:\Users\RaaViVi\.ecosystem\cloudflare\deploy-tunnel-config.ps1`.
 
 ## Troubleshooting
 
-**Port 3444 already in use:**
-
-```powershell
-netstat -ano | findstr 3444
-taskkill /PID <PID> /F
-```
-
-**App won't start:**
-
-- Check Node.js is installed: `node --version`
-- Check npm packages: `npm install` (in project root)
-- Check logs in PowerShell window where you ran `npm start`
-
-**Can't access libraries:**
-
-- Verify folder path exists and is readable by your user
-- Check path in `data/config.json` matches exactly
-
-**Share links 404:**
-
-- Check share token in `data/shares.json`
-- Verify shared folder/file still exists
-- Check if token has expired
-
-## Development
-
-### Code Style
-
-- Vanilla JavaScript (no build step, no frameworks)
-- Modular structure — each concern in its own file
-- No comments except for non-obvious logic
-
-### Adding a Route
-
-1. Create a new file in `src/routes/`
-2. Use `router.get/post/delete` from Express
-3. Apply `requireAuth` middleware if needed
-4. Mount in `server.js` with `app.use()`
-
-### Testing API Locally
-
-```bash
-curl -X POST http://localhost:3444/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"password":"default"}'
-
-curl -X GET http://localhost:3444/api/libraries
-```
+- **Port in use**: `netstat -ano | findstr 3444` → `taskkill /PID <pid> /F`
+- **Libraries missing**: verify the path in `data/config.json` exists and is readable
+- **Share link 404**: token expired/revoked in `data/shares.json`, or the target moved
+- **Tunnel down**: `sc.exe query cloudflared`; see `.ecosystem/cloudflare/cloudflare.md`
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome. Please:
-
-1. Create a branch
-2. Make focused changes
-3. Test locally
-4. Commit with conventional messages (`feat:`, `fix:`, `docs:`, etc.)
-5. Open a pull request
-
-## Support
-
-For issues or questions:
-
-- Check logs in the PowerShell window running `node server.js`
-- Review `data/config.json` and `data/shares.json`
-- Verify Cloudflare tunnel is running: `cloudflared.exe` process should be active
