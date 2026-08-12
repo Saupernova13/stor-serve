@@ -31,10 +31,22 @@ Node origin speaks plain HTTP)
 
 ## Dev / prod
 
-| Instance | Tree | Port | Host |
-|---|---|---|---|
-| prod | `C:\prod\stor-serve` (git-free artifact dir) | 3444 | storage.raavivi.co.za |
-| dev | `C:\Users\RaaViVi\Documents\github\stor-serve` | 3445 | storage-dev.raavivi.co.za |
+| Instance | Tree | Port | Host | State |
+|---|---|---|---|---|
+| prod | `C:\prod\stor-serve` (git-free artifact dir) | 3444 | storage.raavivi.co.za | always on |
+| dev | `C:\Users\RaaViVi\Documents\github\stor-serve` | 3445 | storage-dev.raavivi.co.za | **off by default** |
+
+**The dev instance is on demand.** Its scheduled task (`stor-serve-dev`) has no trigger, so it never
+starts by itself and costs nothing while idle. Start it for a testing session and stop it after:
+
+```powershell
+$rel = "C:\Users\RaaViVi\Documents\github\ecosystem-deploy\release.ps1"
+powershell -File $rel stor-serve -Up      # starts dev, waits until it serves, prints the URL
+powershell -File $rel stor-serve -Down    # shuts it down completely - always do this when done
+```
+
+`storage-dev.raavivi.co.za` stays in the Cloudflare tunnel permanently; a 502 there just means dev is
+off, so spin it up rather than debugging the tunnel. A dev instance that is down is **not a fault**.
 
 - Port comes from `PORT` (via `env.local.bat` per tree; default 3444).
 - Deploys are **artifact** deploys via `release.ps1 stor-serve` (ecosystem-deploy):
