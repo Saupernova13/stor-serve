@@ -14,7 +14,7 @@ if ($TaskExists) {
 
 Write-Host "Creating scheduled task '$TaskName'..."
 
-$Action = New-ScheduledTaskAction -Execute "cscript.exe" -Argument "`"$ScriptPath`""
+$Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//nologo `"$ScriptPath`""
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $User
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $Principal = New-ScheduledTaskPrincipal -UserId $User -RunLevel Highest
