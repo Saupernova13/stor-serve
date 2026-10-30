@@ -8,5 +8,6 @@ if exist "%~dp0env.local.bat" call "%~dp0env.local.bat"
 
 :restart
 node server.js
-timeout /t 5 /nobreak
+REM Not "timeout": under wscript it has no console stdin and returns instantly. ping waits.
+ping -n 6 127.0.0.1 >nul
 goto restart
