@@ -130,7 +130,7 @@ start.bat             Restart-loop launcher (sources env.local.bat)
 ```
 
 After editing `config.yml`, deploy with
-`C:\Users\RaaViVi\.ecosystem\cloudflare\deploy-tunnel-config.ps1`.
+`C:\Users\RaaViVi\Documents\github\ecosystem-setup\scripts\deploy-tunnel-config.ps1`.
 
 ## Troubleshooting
 
