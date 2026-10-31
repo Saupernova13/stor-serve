@@ -1,31 +1,45 @@
 #Requires -RunAsAdministrator
+# Register stor-serve to start at logon, elevated. The task launches this tree's start-silent.vbs;
+# the path is derived from this script's own location, so the same file serves both trees:
+#   prod:  setup-startup.ps1                                     (triggered at logon)
+#   dev:   setup-startup.ps1 -TaskName stor-serve-dev -OnDemand  (no trigger; release.ps1 -Up starts it)
 
-$TaskName = "stor-serve"
-$TaskDescription = "Start stor-serve file storage service on logon"
-$ScriptPath = "C:\utils\stor-serve\start-silent.vbs"
-$User = "RaaViVi"
+param(
+    [string]$TaskName = "stor-serve-prod",
+    [string]$User = $env:USERNAME,
+    [switch]$OnDemand
+)
 
-$TaskExists = $null -ne (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)
+$ScriptPath = Join-Path $PSScriptRoot "start-silent.vbs"
+if (-not (Test-Path $ScriptPath)) {
+    Write-Error "start-silent.vbs not found next to this script: $ScriptPath"
+    exit 1
+}
 
-if ($TaskExists) {
-    Write-Host "Task '$TaskName' already exists. Removing..."
+if ($null -ne (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
+    Write-Host "Task '$TaskName' already exists. Replacing it..."
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-Write-Host "Creating scheduled task '$TaskName'..."
-
-$Action = New-ScheduledTaskAction -Execute "cscript.exe" -Argument "`"$ScriptPath`""
-$Trigger = New-ScheduledTaskTrigger -AtLogOn -User $User
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$Action    = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//nologo `"$ScriptPath`""
+$Settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $Principal = New-ScheduledTaskPrincipal -UserId $User -RunLevel Highest
 
-Register-ScheduledTask -TaskName $TaskName `
-  -Description $TaskDescription `
-  -Action $Action `
-  -Trigger $Trigger `
-  -Settings $Settings `
-  -Principal $Principal `
-  -Force
+$Params = @{
+    TaskName    = $TaskName
+    Description = "Start stor-serve file storage service on logon"
+    Action      = $Action
+    Settings    = $Settings
+    Principal   = $Principal
+}
+if (-not $OnDemand) {
+    $Params.Trigger = New-ScheduledTaskTrigger -AtLogOn -User $User
+}
 
-Write-Host "Task '$TaskName' created successfully"
-Write-Host "The service will start automatically on next logon as $User with elevated privileges"
+Register-ScheduledTask @Params -Force | Out-Null
+
+if ($OnDemand) {
+    Write-Host "Task '$TaskName' created with no trigger. Start it with Start-ScheduledTask or release.ps1 -Up."
+} else {
+    Write-Host "Task '$TaskName' created. It starts at every logon as $User with elevated privileges."
+}
