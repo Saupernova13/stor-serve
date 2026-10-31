@@ -20,7 +20,7 @@ After initializing this project, the tunnel was configured with:
 cloudflared tunnel route dns aafaca80-4139-4b36-bb3f-b81e382d98f8 storage.raavivi.co.za
 
 # Deploy the updated config to Windows system profile
-C:\Users\RaaViVi\.ecosystem\cloudflare\deploy-tunnel-config.ps1
+C:\Users\RaaViVi\Documents\github\ecosystem-setup\scripts\deploy-tunnel-config.ps1
 ```
 
 ## Accessing
