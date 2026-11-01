@@ -143,6 +143,11 @@ Session-authed (`/api` behind `requireAuth` except `/api/auth` and `/api/public`
   the origin would break LAN/tailnet access.
 - **Session cookie**: `httpOnly`, `sameSite: lax`, `secure: false` — same
   reason; a secure-only cookie would never be issued over the HTTP origin.
+- **Inline previews are sandboxed**: a file opened with `?inline=1` (an SVG could
+  carry script) is served with its own response CSP (`sandbox`, `default-src 'none'`)
+  instead of the app-wide one, so it cannot run script on this origin. Audio and
+  video get the same rules without `sandbox` (Chromium will not load them under
+  it), and a PDF gets `sandbox allow-scripts` so the browser's viewer still works.
 - **Rate limiting** on login and general requests; bcrypt (12 rounds) for the
   password; share tokens are 64-char hex.
 

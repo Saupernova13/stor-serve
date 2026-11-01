@@ -138,6 +138,34 @@ function serveDirectory(req, res, dirPath, dirName) {
   archive.finalize();
 }
 
+// Response CSP for every inline preview. The storefront opens a preview as a
+// top-level document on this origin (window.open(url + '?inline=1')), and the
+// app's own CSP allows 'unsafe-inline' scripts, so a planted .svg would run
+// script on the stor-serve origin with the admin's session cookie. This replaces
+// helmet's CSP for that response: `sandbox` gives the file an opaque origin with
+// scripts off, and nothing else may load beyond what an image, media or text
+// document needs. A response CSP only governs the file when it is the document
+// itself, so embedding by URL (<img>, <video>, <audio>) is not affected.
+const INLINE_CSP_RULES = "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
+const INLINE_CSP = `sandbox; ${INLINE_CSP_RULES}`;
+
+// The browser's built-in PDF viewer is opened as the top-level document too and
+// is not script-free, so a PDF keeps scripts but stays on an opaque origin (no
+// allow-same-origin): no cookies, and no access to this site's DOM or storage.
+const INLINE_PDF_CSP = `sandbox allow-scripts; ${INLINE_CSP_RULES}`;
+
+// Audio and video cannot carry script, and Chromium refuses to load a media
+// document's own source under `sandbox` (the player stays on NETWORK_NO_SOURCE),
+// so they get the same rules without the sandbox. default-src 'none' still
+// blocks any script.
+const INLINE_MEDIA_CSP = INLINE_CSP_RULES;
+
+function inlineCsp(mime) {
+  if (/^application\/pdf\b/i.test(mime)) return INLINE_PDF_CSP;
+  if (/^(audio|video)\//i.test(mime)) return INLINE_MEDIA_CSP;
+  return INLINE_CSP;
+}
+
 // Stream a resolved file to the response. Supports HTTP Range requests so that
 // media (video/audio) can be seeked and previewed inline in the browser.
 //   fileMeta: { path, size, name, mime } from libraries.readFile()
@@ -147,6 +175,11 @@ function serveFile(req, res, fileMeta, opts = {}) {
   const contentType = inline ? fileMeta.mime : 'application/octet-stream';
   const dispositionType = inline ? 'inline' : 'attachment';
 
+  if (inline) {
+    res.setHeader('Content-Security-Policy', inlineCsp(fileMeta.mime));
+    // Never let the browser sniff an inline file into a more dangerous type.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  }
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Disposition', contentDisposition(dispositionType, fileMeta.name));
   res.setHeader('Accept-Ranges', 'bytes');
@@ -184,4 +217,4 @@ function serveFile(req, res, fileMeta, opts = {}) {
   return pipeFile(res, fs.createReadStream(fileMeta.path));
 }
 
-module.exports = { serveFile, serveDirectory, contentDisposition, zipEntryName };
+module.exports = { serveFile, serveDirectory, contentDisposition, zipEntryName, INLINE_CSP, INLINE_PDF_CSP, INLINE_MEDIA_CSP };

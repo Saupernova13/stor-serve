@@ -5,8 +5,9 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const express = require('express');
+const helmet = require('helmet');
 const libraries = require('../src/libraries');
-const { serveFile, serveDirectory, contentDisposition, zipEntryName } = require('../src/download');
+const { serveFile, serveDirectory, contentDisposition, zipEntryName, INLINE_CSP, INLINE_PDF_CSP, INLINE_MEDIA_CSP } = require('../src/download');
 
 test('contentDisposition: plain ASCII names pass through', () => {
   assert.strictEqual(
@@ -44,6 +45,11 @@ before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stor-serve-dl-'));
   fs.writeFileSync(path.join(dir, 'hello.txt'), '0123456789');
   fs.writeFileSync(path.join(dir, '日本語.txt'), 'konnichiwa');
+  fs.writeFileSync(path.join(dir, 'evil.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>');
+  fs.writeFileSync(path.join(dir, 'doc.pdf'), '%PDF-1.4' + String.fromCharCode(10) + '%%EOF');
+  fs.writeFileSync(path.join(dir, 'pic.png'), 'not really a png');
+  fs.writeFileSync(path.join(dir, 'clip.mp4'), 'not really a video');
+  fs.writeFileSync(path.join(dir, 'song.mp3'), 'not really audio');
   fs.mkdirSync(path.join(dir, 'tree', 'sub'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'tree', 'top.txt'), 'top');
   fs.writeFileSync(path.join(dir, 'tree', 'sub', 'inner.txt'), 'inner');
@@ -226,4 +232,78 @@ test('serveDirectory: an archive error after the headers went out drops the conn
       fs.chmodSync(locked, 0o644);
     }
   })();
+});
+
+// --- inline previews carry a sandboxing CSP ---
+
+const EXPECTED_INLINE_CSP = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
+
+test('serveFile: an inline SVG is sandboxed by its response CSP', async () => {
+  const res = await fetch(`${base}/f/evil.svg?inline=1`);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.headers.get('content-type'), 'image/svg+xml');
+  assert.strictEqual(res.headers.get('content-security-policy'), EXPECTED_INLINE_CSP);
+  assert.strictEqual(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(res.headers.get('content-disposition'), /^inline;/);
+  assert.match(await res.text(), /<script>/);
+});
+
+test('serveFile: the sandbox CSP replaces the helmet one instead of being added to it', async () => {
+  const app = express();
+  app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", "'unsafe-inline'"] } } }));
+  app.get('/f/*', (req, res) => serveFile(req, res, libraries.readFile(dir, req.params[0]), { inline: req.query.inline === '1' }));
+  const srv = http.createServer(app);
+  await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${srv.address().port}/f/evil.svg`;
+    const inline = await fetch(`${url}?inline=1`);
+    assert.strictEqual(inline.headers.get('content-security-policy'), EXPECTED_INLINE_CSP);
+    // A plain download keeps the app-wide policy; it is an attachment, never rendered.
+    const download = await fetch(url);
+    assert.match(download.headers.get('content-security-policy'), /script-src 'self' 'unsafe-inline'/);
+    assert.strictEqual(download.headers.get('content-type'), 'application/octet-stream');
+    assert.match(download.headers.get('content-disposition'), /^attachment;/);
+  } finally {
+    srv.closeAllConnections();
+    await new Promise((resolve) => srv.close(resolve));
+  }
+});
+
+test('serveFile: other inline types get the same sandbox, a PDF keeps scripts on an opaque origin, media is not sandboxed', async () => {
+  const text = await fetch(`${base}/f/hello.txt?inline=1`);
+  assert.strictEqual(text.headers.get('content-security-policy'), EXPECTED_INLINE_CSP);
+  const png = await fetch(`${base}/f/pic.png?inline=1`);
+  assert.strictEqual(png.headers.get('content-security-policy'), EXPECTED_INLINE_CSP);
+
+  const pdf = await fetch(`${base}/f/doc.pdf?inline=1`);
+  assert.strictEqual(pdf.headers.get('content-type'), 'application/pdf');
+  assert.strictEqual(pdf.headers.get('content-security-policy'), INLINE_PDF_CSP);
+  assert.match(pdf.headers.get('content-security-policy'), /^sandbox allow-scripts;/);
+
+  // Chromium will not load a media document's source under `sandbox`, so audio
+  // and video get the same rules without it (default-src 'none' still blocks script).
+  for (const [file, mime] of [['clip.mp4', 'video/mp4'], ['song.mp3', 'audio/mpeg']]) {
+    const media = await fetch(`${base}/f/${file}?inline=1`);
+    assert.strictEqual(media.headers.get('content-type'), mime);
+    assert.strictEqual(media.headers.get('content-security-policy'), INLINE_MEDIA_CSP);
+    assert.strictEqual(media.headers.get('content-security-policy'),
+      "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'");
+    assert.strictEqual(media.headers.get('x-content-type-options'), 'nosniff');
+    await media.arrayBuffer();
+  }
+});
+
+test('serveFile: no inline policy ever allows the file to share this origin', () => {
+  assert.strictEqual(INLINE_CSP, EXPECTED_INLINE_CSP);
+  for (const csp of [INLINE_CSP, INLINE_PDF_CSP, INLINE_MEDIA_CSP]) {
+    assert.ok(!csp.includes('allow-same-origin'));
+    assert.ok(!csp.includes('allow-top-navigation'));
+    assert.match(csp, /default-src 'none'/);
+  }
+});
+
+test('serveFile: a plain download is not given the inline policy', async () => {
+  const res = await fetch(`${base}/f/evil.svg`);
+  assert.strictEqual(res.headers.get('content-security-policy'), null);
+  assert.strictEqual(res.headers.get('content-type'), 'application/octet-stream');
 });
