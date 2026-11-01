@@ -48,7 +48,7 @@ powershell -File $rel stor-serve -Down    # shuts it down completely - always do
 `storage-dev.raavivi.co.za` stays in the Cloudflare tunnel permanently; a 502 there just means dev is
 off, so spin it up rather than debugging the tunnel. A dev instance that is down is **not a fault**.
 
-- Port comes from `PORT` (via `env.local.bat` per tree; default 3444).
+- Port comes from `PORT` (via `env.local.bat` per tree, `env.local.sh` on Linux; default 3444).
 - Deploys are **artifact** deploys via `release.ps1 stor-serve` (ecosystem-deploy):
   the built product ships to prod, and prod's `data/` and 18 GB `shared/` are
   never touched. See `.ecosystem/deploy/deploy.md`.
@@ -65,6 +65,51 @@ npm start          # http://localhost:3444 (or PORT from env.local.bat)
 First run auto-creates `data/config.json`, a session secret, the default
 public drop folder, and the admin password `default` — change it from the
 admin UI (`/admin` → password section).
+
+`npm test` runs the unit tests (`node --test`, under `test/`): the path guard,
+the owner-only writer and the download headers.
+
+## Linux
+
+The app is plain Node and runs unchanged; only the launchers differ. You need
+Node.js (a current LTS) and, for the service, systemd.
+
+```bash
+cd ~/stor-serve
+npm install
+cp env.local.example.sh env.local.sh   # optional: set PORT (default 3444)
+./start.sh                             # http://localhost:3444; Ctrl+C stops it
+```
+
+`start.sh` is the counterpart of `start.bat`: it sources `env.local.sh`
+(gitignored, per tree, like `env.local.bat`) and runs `node server.js` in a
+restart loop with a 5 s back-off. `node` is taken from `PATH`, then nvm, then
+Volta; set `NODE_EXE` in `env.local.sh` for anything else.
+
+**Start at login** with `setup-startup.sh`, the counterpart of
+`setup-startup.ps1`. It installs a systemd *user* service (run it as your normal
+user — it refuses to run as root) that runs `start.sh` with `SUPERVISED=1`, so
+systemd does the restarting:
+
+```bash
+./setup-startup.sh --name stor-serve-prod --linger    # enable + start; --linger also starts it at boot
+./setup-startup.sh --name stor-serve-dev --on-demand  # install only; never starts by itself
+systemctl --user start stor-serve-dev                 # a dev testing session ...
+systemctl --user stop stor-serve-dev                  # ... and always stop it after
+journalctl --user -u stor-serve-prod -f               # server output
+./setup-startup.sh --name stor-serve-prod --uninstall
+```
+
+`--print` shows the unit without installing it. Re-running is safe: an
+unchanged unit is left alone and a changed one restarts a running instance.
+
+**Where things live** — the same as on Windows, relative to the tree:
+`data/config.json` (password hash, session secret), `data/shares.json` (share
+tokens) and the default `shared/` drop folder. On unix the two data files are
+created owner-only (`0600`), and a looser existing file is tightened the next
+time it is written. The service user must be able to read the library folders;
+a file it cannot read answers 403 and is left out of ZIPs. Library paths are absolute paths on the
+server (e.g. `/srv/media`) and are case-sensitive.
 
 ## API
 
@@ -98,6 +143,11 @@ Session-authed (`/api` behind `requireAuth` except `/api/auth` and `/api/public`
   the origin would break LAN/tailnet access.
 - **Session cookie**: `httpOnly`, `sameSite: lax`, `secure: false` — same
   reason; a secure-only cookie would never be issued over the HTTP origin.
+- **Inline previews are sandboxed**: a file opened with `?inline=1` (an SVG could
+  carry script) is served with its own response CSP (`sandbox`, `default-src 'none'`)
+  instead of the app-wide one, so it cannot run script on this origin. Audio and
+  video get the same rules without `sandbox` (Chromium will not load them under
+  it), and a PDF gets `sandbox allow-scripts` so the browser's viewer still works.
 - **Rate limiting** on login and general requests; bcrypt (12 rounds) for the
   password; share tokens are 64-char hex.
 
@@ -117,7 +167,11 @@ public/
   admin.html/app.js/style.css        Admin dashboard
   favicon.svg, icons/
 data/                 config.json + shares.json (gitignored, auto-created)
+test/                 node --test suites (npm test)
 start.bat             Restart-loop launcher (sources env.local.bat)
+start.sh              Linux launcher (sources env.local.sh)
+setup-startup.sh      Linux systemd user-service installer
+env.local.example.sh  Template for env.local.sh
 ```
 
 ## Cloudflare
@@ -135,6 +189,7 @@ After editing `config.yml`, deploy with
 ## Troubleshooting
 
 - **Port in use**: `netstat -ano | findstr 3444` → `taskkill /PID <pid> /F`
+  (Linux: `ss -ltnp | grep 3444` → `kill <pid>`)
 - **Libraries missing**: verify the path in `data/config.json` exists and is readable
 - **Share link 404**: token expired/revoked in `data/shares.json`, or the target moved
 - **Tunnel down**: `sc.exe query cloudflared`; see `.ecosystem/cloudflare/cloudflare.md`

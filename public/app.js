@@ -481,7 +481,7 @@ class StorServeApp {
         <form id="library-form">
           <div class="form-row">
             <input type="text" id="lib-name" placeholder="Display name (e.g. Movies)" required>
-            <input type="text" id="lib-path" placeholder="Full path (e.g. D:\\Movies)" required>
+            <input type="text" id="lib-path" placeholder="Full path to a folder on this server" required>
             <button type="submit" class="btn btn-primary">Add</button>
           </div>
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">

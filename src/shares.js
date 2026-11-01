@@ -1,9 +1,16 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { writeSecretFile, tightenSecretFile } = require('./secureFile');
 
 const SHARES_PATH = path.join(__dirname, '..', 'data', 'shares.json');
 const DATA_DIR = path.dirname(SHARES_PATH);
+
+// An install made before the owner-only writer may have a 0644 shares.json;
+// tighten it at startup rather than waiting for the next write.
+function tightenPermissions() {
+  tightenSecretFile(SHARES_PATH);
+}
 
 function load() {
   if (!fs.existsSync(SHARES_PATH)) {
@@ -22,7 +29,7 @@ function save(shares) {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-  fs.writeFileSync(SHARES_PATH, JSON.stringify(shares, null, 2), 'utf-8');
+  writeSecretFile(SHARES_PATH, JSON.stringify(shares, null, 2));
 }
 
 function generateToken() {
@@ -109,6 +116,7 @@ function cleanup() {
 }
 
 module.exports = {
+  tightenPermissions,
   load,
   save,
   generateToken,
