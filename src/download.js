@@ -38,6 +38,12 @@ function pipeFile(res, stream) {
 // One file the service user cannot read (permission bits on unix) would make
 // archiver error out and cut the whole ZIP short, so unreadable files and
 // folders are left out and logged instead.
+//
+// This is best effort only: fs.accessSync(R_OK) checks the permission bits (and
+// on Windows just the read-only flag). It says nothing about Windows ACLs or a
+// file another process has locked, so those still fail when archiver opens the
+// file. That failure must stay visible (the response is destroyed, see the
+// archive 'error' handler) and must not turn into a silently truncated ZIP.
 function isReadable(filePath) {
   try {
     fs.accessSync(filePath, fs.constants.R_OK);
@@ -48,12 +54,6 @@ function isReadable(filePath) {
   }
 }
 
-// Stream a directory as a ZIP file without storing it locally.
-// Uses archiver to build the ZIP on-the-fly, piping directly to the response.
-//   dirPath: absolute path to the directory to zip
-//   dirName: name of the directory (used for the ZIP filename)
-function serveDirectory(req, res, dirPath, dirName) {
-  const safeName = dirName.replace(/[^a-z0-9._\- ]/gi, '_').replace(/\s+/g, '_');
 // A ZIP entry name is built one directory-entry name at a time. On unix a name
 // may legally contain a backslash, and archiver turns "\" into "/", so a file
 // called "..\..\evil.bat" would become the entry "../../evil.bat" (zip-slip) for
@@ -64,6 +64,12 @@ function zipEntryName(name) {
   return clean === '.' || clean === '..' ? '_' : clean;
 }
 
+// Stream a directory as a ZIP file without storing it locally.
+// Uses archiver to build the ZIP on-the-fly, piping directly to the response.
+//   dirPath: absolute path to the directory to zip
+//   dirName: name of the directory (used for the ZIP filename)
+function serveDirectory(req, res, dirPath, dirName) {
+  const safeName = dirName.replace(/[^a-z0-9._\- ]/gi, '_').replace(/\s+/g, '_');
   const zipName = `${safeName}.zip`;
 
   res.setHeader('Content-Type', 'application/zip');
@@ -78,9 +84,14 @@ function zipEntryName(name) {
   archive.on('error', (err) => {
     console.error('Archive error:', err);
     if (!res.headersSent) {
+      res.removeHeader('Content-Disposition');
+      res.removeHeader('Content-Type');
       res.status(500).json({ error: 'Failed to create archive' });
     } else {
-      res.end();
+      // Bytes are already on the wire. A clean end would hand the browser a
+      // corrupt ZIP that it reports as a successful download, so drop the
+      // connection and let the download fail visibly (as pipeFile does).
+      res.destroy();
     }
   });
 

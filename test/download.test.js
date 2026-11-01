@@ -195,3 +195,35 @@ test('serveDirectory: a name with backslashes cannot become a zip-slip entry', {
     assert.ok(!name.split('/').some((part) => part === '.' || part === '..'), `traversal component in ${name}`);
   }
 });
+
+test('serveDirectory: an archive error after the headers went out drops the connection', (t) => {
+  if (process.platform === 'win32' || (process.getuid && process.getuid() === 0)) {
+    return t.skip('permission bits are not enforced here (windows, or running as root)');
+  }
+  return (async () => {
+    const failing = path.join(dir, 'failing');
+    fs.mkdirSync(failing);
+    for (const name of ['a.txt', 'b.txt', 'c.txt', 'd.txt']) {
+      fs.writeFileSync(path.join(failing, name), name.repeat(1000));
+    }
+    // The last entry archiver is handed cannot be opened, so it errors after
+    // the earlier entries have already been written to the response.
+    const last = fs.readdirSync(failing).pop();
+    const locked = path.join(failing, last);
+    fs.chmodSync(locked, 0o000);
+    // Skip the up-front readability check so the failure happens inside archiver.
+    t.mock.method(fs, 'accessSync', () => undefined);
+    try {
+      await assert.rejects(async () => {
+        const res = await fetch(`${base}/zip/failing`);
+        // A clean end would resolve here with a ZIP that has no central directory.
+        await res.arrayBuffer();
+      });
+      // The server survives it.
+      const again = await fetch(`${base}/f/hello.txt`);
+      assert.strictEqual(again.status, 200);
+    } finally {
+      fs.chmodSync(locked, 0o644);
+    }
+  })();
+});
