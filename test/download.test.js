@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const express = require('express');
 const libraries = require('../src/libraries');
-const { serveFile, contentDisposition } = require('../src/download');
+const { serveFile, serveDirectory, contentDisposition } = require('../src/download');
 
 test('contentDisposition: plain ASCII names pass through', () => {
   assert.strictEqual(
@@ -44,12 +44,19 @@ before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stor-serve-dl-'));
   fs.writeFileSync(path.join(dir, 'hello.txt'), '0123456789');
   fs.writeFileSync(path.join(dir, '日本語.txt'), 'konnichiwa');
+  fs.mkdirSync(path.join(dir, 'tree', 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'tree', 'top.txt'), 'top');
+  fs.writeFileSync(path.join(dir, 'tree', 'sub', 'inner.txt'), 'inner');
 
   const app = express();
   app.get('/f/*', (req, res) => {
     const meta = libraries.readFile(dir, req.params[0]);
     if (!meta) return res.status(404).json({ error: 'Not found' });
     return serveFile(req, res, meta, { inline: req.query.inline === '1' });
+  });
+  app.get('/zip/*', (req, res) => {
+    const full = libraries.resolveLibraryPath(dir, req.params[0]);
+    return serveDirectory(req, res, full, path.basename(full));
   });
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -99,6 +106,37 @@ test('serveFile: an unreadable file answers 403 and the server stays up', (t) =>
       // Still serving afterwards.
       const again = await fetch(`${base}/f/hello.txt`);
       assert.strictEqual(again.status, 200);
+    } finally {
+      fs.chmodSync(locked, 0o644);
+    }
+  })();
+});
+
+test('serveDirectory: ZIP entries use forward slashes', async () => {
+  const res = await fetch(`${base}/zip/tree`);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.headers.get('content-type'), 'application/zip');
+  const body = Buffer.from(await res.arrayBuffer());
+  assert.ok(body.includes('sub/inner.txt'));
+  assert.ok(body.includes('top.txt'));
+  assert.ok(!body.includes('sub\inner.txt'));
+});
+
+test('serveDirectory: an unreadable file is left out instead of breaking the ZIP', (t) => {
+  if (process.platform === 'win32' || (process.getuid && process.getuid() === 0)) {
+    return t.skip('permission bits are not enforced here (windows, or running as root)');
+  }
+  return (async () => {
+    const locked = path.join(dir, 'tree', 'locked.txt');
+    fs.writeFileSync(locked, 'secret');
+    fs.chmodSync(locked, 0o000);
+    try {
+      const res = await fetch(`${base}/zip/tree`);
+      const body = Buffer.from(await res.arrayBuffer());
+      assert.ok(body.includes('top.txt'));
+      assert.ok(!body.includes('locked.txt'));
+      // A complete archive ends with the end-of-central-directory record.
+      assert.ok(body.includes(Buffer.from([0x50, 0x4b, 0x05, 0x06])));
     } finally {
       fs.chmodSync(locked, 0o644);
     }

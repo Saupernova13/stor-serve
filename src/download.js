@@ -35,6 +35,19 @@ function pipeFile(res, stream) {
   return stream.pipe(res);
 }
 
+// One file the service user cannot read (permission bits on unix) would make
+// archiver error out and cut the whole ZIP short, so unreadable files and
+// folders are left out and logged instead.
+function isReadable(filePath) {
+  try {
+    fs.accessSync(filePath, fs.constants.R_OK);
+    return true;
+  } catch (e) {
+    console.warn('Skipping unreadable file in ZIP:', filePath);
+    return false;
+  }
+}
+
 // Stream a directory as a ZIP file without storing it locally.
 // Uses archiver to build the ZIP on-the-fly, piping directly to the response.
 //   dirPath: absolute path to the directory to zip
@@ -77,14 +90,20 @@ function serveDirectory(req, res, dirPath, dirName) {
     const stat = fs.statSync(currentPath);
 
     if (stat.isDirectory()) {
-      const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+      let entries;
+      try {
+        entries = fs.readdirSync(currentPath, { withFileTypes: true });
+      } catch (e) {
+        console.warn('Skipping unreadable folder in ZIP:', currentPath);
+        return;
+      }
       entries.forEach((entry) => {
         const fullPath = path.join(currentPath, entry.name);
         const nextArcPath = arcPath ? path.posix.join(arcPath, entry.name) : entry.name;
 
         if (entry.isDirectory()) {
           addToArchive(fullPath, nextArcPath);
-        } else {
+        } else if (!entry.isFile() || isReadable(fullPath)) {
           archive.file(fullPath, { name: nextArcPath });
         }
       });
