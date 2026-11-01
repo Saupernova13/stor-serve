@@ -5,12 +5,15 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const config = require('./src/config');
+const shares = require('./src/shares');
 const requireAuth = require('./src/middleware/requireAuth');
 
 const app = express();
 const PORT = process.env.PORT || 3444;
 
 config.ensureDataDir();
+config.tightenPermissions();
+shares.tightenPermissions();
 
 const cfg = config.getOrCreate('default');
 config.ensureDefaultLibrary(cfg);

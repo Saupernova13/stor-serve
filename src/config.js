@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { writeSecretFile } = require('./secureFile');
+const { writeSecretFile, tightenSecretFile } = require('./secureFile');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'data', 'config.json');
 const DATA_DIR = path.dirname(CONFIG_PATH);
@@ -16,6 +16,12 @@ function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
+}
+
+// An install made before the owner-only writer may have a 0644 config.json;
+// tighten it at startup rather than waiting for the next write.
+function tightenPermissions() {
+  tightenSecretFile(CONFIG_PATH);
 }
 
 function load() {
@@ -188,5 +194,6 @@ module.exports = {
   getPublicLibrary,
   getPublicLibraries,
   ensureDataDir,
+  tightenPermissions,
   DEFAULT_PUBLIC_DIR
 };
