@@ -37,12 +37,17 @@ function isPreviewable(filename) {
 
 // Resolve a relative path inside a library root, refusing anything that would
 // escape the root (path traversal). Requires the resolved path to be the root
-// itself or sit beneath it on a real separator boundary.
+// itself or sit beneath it on a real separator boundary. The comparison is
+// case-sensitive on purpose: the string is built from the configured root, so
+// it matches the filesystem's own case rules on every platform.
 function resolveLibraryPath(libraryRoot, relPath) {
   const root = path.resolve(libraryRoot);
   const resolved = path.resolve(root, path.normalize(relPath || ''));
 
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+  // A filesystem root ("/" or "D:\") already ends in a separator; appending
+  // another would make every child of it fail the check.
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  if (resolved !== root && !resolved.startsWith(prefix)) {
     return null;
   }
 
@@ -64,17 +69,35 @@ function listDirectory(libraryRoot, relPath) {
     return null;
   }
 
-  const entries = fs.readdirSync(fullPath, { withFileTypes: true });
-  const items = entries.map(entry => {
-    const entryStat = fs.statSync(path.join(fullPath, entry.name));
-    return {
+  let entries;
+  try {
+    entries = fs.readdirSync(fullPath, { withFileTypes: true });
+  } catch (e) {
+    // Unreadable directory (EACCES is common on unix).
+    return null;
+  }
+
+  const items = [];
+  for (const entry of entries) {
+    let entryStat;
+    try {
+      entryStat = fs.statSync(path.join(fullPath, entry.name));
+    } catch (e) {
+      // Dangling symlink, or an entry that vanished mid-listing: nothing to
+      // serve, and one bad entry must not fail the whole listing.
+      continue;
+    }
+    // Type comes from the stat (which follows symlinks), not the dirent, so a
+    // symlink to a folder lists as a folder instead of a file.
+    const isFile = entryStat.isFile();
+    items.push({
       name: entry.name,
-      type: entry.isDirectory() ? 'directory' : 'file',
-      size: entry.isFile() ? entryStat.size : null,
+      type: entryStat.isDirectory() ? 'directory' : 'file',
+      size: isFile ? entryStat.size : null,
       modified: entryStat.mtime.toISOString(),
-      previewable: entry.isFile() ? isPreviewable(entry.name) : false
-    };
-  });
+      previewable: isFile ? isPreviewable(entry.name) : false
+    });
+  }
 
   items.sort((a, b) => {
     if (a.type !== b.type) {
