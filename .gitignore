@@ -3,6 +3,7 @@ data/config.json
 data/shares.json
 .env.local
 env.local.bat
+env.local.sh
 *.log
 logs/
 
