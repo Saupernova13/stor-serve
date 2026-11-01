@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { writeSecretFile } = require('./secureFile');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'data', 'config.json');
 const DATA_DIR = path.dirname(CONFIG_PATH);
@@ -33,7 +34,7 @@ function load() {
 
 function save(config) {
   ensureDataDir();
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+  writeSecretFile(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
 function create(passwordPlain) {

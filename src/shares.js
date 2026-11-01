@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { writeSecretFile } = require('./secureFile');
 
 const SHARES_PATH = path.join(__dirname, '..', 'data', 'shares.json');
 const DATA_DIR = path.dirname(SHARES_PATH);
@@ -22,7 +23,7 @@ function save(shares) {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-  fs.writeFileSync(SHARES_PATH, JSON.stringify(shares, null, 2), 'utf-8');
+  writeSecretFile(SHARES_PATH, JSON.stringify(shares, null, 2));
 }
 
 function generateToken() {
