@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const express = require('express');
 const libraries = require('../src/libraries');
-const { serveFile, serveDirectory, contentDisposition } = require('../src/download');
+const { serveFile, serveDirectory, contentDisposition, zipEntryName } = require('../src/download');
 
 test('contentDisposition: plain ASCII names pass through', () => {
   assert.strictEqual(
@@ -119,7 +119,7 @@ test('serveDirectory: ZIP entries use forward slashes', async () => {
   const body = Buffer.from(await res.arrayBuffer());
   assert.ok(body.includes('sub/inner.txt'));
   assert.ok(body.includes('top.txt'));
-  assert.ok(!body.includes('sub\inner.txt'));
+  assert.ok(!body.includes('sub\\inner.txt'));
 });
 
 test('serveDirectory: an unreadable file is left out instead of breaking the ZIP', (t) => {
@@ -141,4 +141,57 @@ test('serveDirectory: an unreadable file is left out instead of breaking the ZIP
       fs.chmodSync(locked, 0o644);
     }
   })();
+});
+
+// Names of the entries in a ZIP, read from its central directory (the local
+// headers are streamed before the sizes are known, the central directory is not).
+function zipEntryNames(buf) {
+  const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  assert.ok(eocd >= 0, 'no end-of-central-directory record: not a complete ZIP');
+  const count = buf.readUInt16LE(eocd + 10);
+  let offset = buf.readUInt32LE(eocd + 16);
+  const names = [];
+  for (let i = 0; i < count; i++) {
+    assert.strictEqual(buf.readUInt32LE(offset), 0x02014b50, 'bad central directory entry');
+    const nameLen = buf.readUInt16LE(offset + 28);
+    const extraLen = buf.readUInt16LE(offset + 30);
+    const commentLen = buf.readUInt16LE(offset + 32);
+    names.push(buf.toString('utf8', offset + 46, offset + 46 + nameLen));
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return names;
+}
+
+test('zipEntryName: backslashes are replaced and . / .. never come out', () => {
+  assert.strictEqual(zipEntryName('plain.txt'), 'plain.txt');
+  assert.strictEqual(zipEntryName('..\\..\\evil.bat'), '.._.._evil.bat');
+  assert.strictEqual(zipEntryName('a\\b'), 'a_b');
+  assert.strictEqual(zipEntryName('.'), '_');
+  assert.strictEqual(zipEntryName('..'), '_');
+  assert.strictEqual(zipEntryName('...'), '...');
+});
+
+test('serveDirectory: a name with backslashes cannot become a zip-slip entry', { skip: process.platform === 'win32' }, async () => {
+  // Legal on unix: a file whose name is a Windows-style traversal, and a folder with a backslash.
+  const slip = path.join(dir, 'slip');
+  fs.mkdirSync(path.join(slip, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(slip, 'sub', '..\\..\\..\\evil.bat'), 'echo pwned');
+  fs.mkdirSync(path.join(slip, 'dir\\..\\..'));
+  fs.writeFileSync(path.join(slip, 'dir\\..\\..', 'inside.txt'), 'x');
+  fs.writeFileSync(path.join(slip, 'ok.txt'), 'ok');
+
+  const res = await fetch(`${base}/zip/slip`);
+  assert.strictEqual(res.status, 200);
+  const names = zipEntryNames(Buffer.from(await res.arrayBuffer()));
+
+  assert.deepStrictEqual(names.slice().sort(), [
+    'dir_.._../inside.txt',
+    'ok.txt',
+    'sub/.._.._.._evil.bat'
+  ]);
+  for (const name of names) {
+    assert.ok(!name.includes('\\'), `backslash left in ${name}`);
+    assert.ok(!name.startsWith('/'), `absolute entry ${name}`);
+    assert.ok(!name.split('/').some((part) => part === '.' || part === '..'), `traversal component in ${name}`);
+  }
 });

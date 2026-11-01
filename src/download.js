@@ -54,6 +54,16 @@ function isReadable(filePath) {
 //   dirName: name of the directory (used for the ZIP filename)
 function serveDirectory(req, res, dirPath, dirName) {
   const safeName = dirName.replace(/[^a-z0-9._\- ]/gi, '_').replace(/\s+/g, '_');
+// A ZIP entry name is built one directory-entry name at a time. On unix a name
+// may legally contain a backslash, and archiver turns "\" into "/", so a file
+// called "..\..\evil.bat" would become the entry "../../evil.bat" (zip-slip) for
+// whoever extracts the archive. Replace backslashes, and never let a component
+// be "." or "..".
+function zipEntryName(name) {
+  const clean = name.replace(/\\/g, '_');
+  return clean === '.' || clean === '..' ? '_' : clean;
+}
+
   const zipName = `${safeName}.zip`;
 
   res.setHeader('Content-Type', 'application/zip');
@@ -99,7 +109,8 @@ function serveDirectory(req, res, dirPath, dirName) {
       }
       entries.forEach((entry) => {
         const fullPath = path.join(currentPath, entry.name);
-        const nextArcPath = arcPath ? path.posix.join(arcPath, entry.name) : entry.name;
+        const entryName = zipEntryName(entry.name);
+        const nextArcPath = arcPath ? path.posix.join(arcPath, entryName) : entryName;
 
         if (entry.isDirectory()) {
           addToArchive(fullPath, nextArcPath);
@@ -108,7 +119,7 @@ function serveDirectory(req, res, dirPath, dirName) {
         }
       });
     } else {
-      archive.file(currentPath, { name: arcPath || path.basename(currentPath) });
+      archive.file(currentPath, { name: arcPath || zipEntryName(path.basename(currentPath)) });
     }
   };
 
@@ -162,4 +173,4 @@ function serveFile(req, res, fileMeta, opts = {}) {
   return pipeFile(res, fs.createReadStream(fileMeta.path));
 }
 
-module.exports = { serveFile, serveDirectory, contentDisposition };
+module.exports = { serveFile, serveDirectory, contentDisposition, zipEntryName };
