@@ -24,7 +24,7 @@ Node origin speaks plain HTTP)
   temp files) via `?download=zip`
 - **Share links** — 256-bit token links (`/s/:token/...`) for private files or
   folders, with optional expiry
-- **Session auth** — bcrypt password (changeable from the admin UI), rate-limited
+- **Session auth** — Argon2id password (changeable from the admin UI), rate-limited
   login
 - **No database** — `data/config.json` + `data/shares.json`
 - **Path security** — all paths normalized and confined to their library root
@@ -148,8 +148,9 @@ Session-authed (`/api` behind `requireAuth` except `/api/auth` and `/api/public`
   instead of the app-wide one, so it cannot run script on this origin. Audio and
   video get the same rules without `sandbox` (Chromium will not load them under
   it), and a PDF gets `sandbox allow-scripts` so the browser's viewer still works.
-- **Rate limiting** on login and general requests; bcrypt (12 rounds) for the
-  password; share tokens are 64-char hex.
+- **Rate limiting** on login and general requests; Argon2id (OWASP params, Node built-in) for the
+  password (bcrypt hashes are rejected; reset with
+  `release.ps1 stor-serve -SetPassword`); share tokens are 64-char hex.
 
 ## Project structure
 

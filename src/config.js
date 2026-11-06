@@ -1,10 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
+const password = require('./password');
 const { writeSecretFile, tightenSecretFile } = require('./secureFile');
 
-const CONFIG_PATH = path.join(__dirname, '..', 'data', 'config.json');
+// STOR_SERVE_CONFIG_PATH lets tests and tools point at another file.
+const CONFIG_PATH = process.env.STOR_SERVE_CONFIG_PATH ||
+  path.join(__dirname, '..', 'data', 'config.json');
 const DATA_DIR = path.dirname(CONFIG_PATH);
 
 // Default public drop folder, created on first run. Drop files here and they
@@ -44,7 +46,7 @@ function save(config) {
 }
 
 function create(passwordPlain) {
-  const hash = bcrypt.hashSync(passwordPlain, 12);
+  const hash = password.hashPassword(passwordPlain);
   const secret = crypto.randomBytes(64).toString('hex');
   const config = {
     passwordHash: hash,
@@ -62,11 +64,11 @@ function verifyPassword(passwordPlain, config) {
   if (!config || !config.passwordHash) {
     return false;
   }
-  return bcrypt.compareSync(passwordPlain, config.passwordHash);
+  return password.verifyPassword(passwordPlain, config.passwordHash);
 }
 
 function setPassword(config, passwordPlain) {
-  config.passwordHash = bcrypt.hashSync(passwordPlain, 12);
+  config.passwordHash = password.hashPassword(passwordPlain);
   save(config);
   return config;
 }
@@ -185,6 +187,7 @@ module.exports = {
   verifyPassword,
   setPassword,
   getOrCreate,
+  isSupportedHash: password.isSupportedHash,
   ensureDefaultLibrary,
   normalizeLibraries,
   addLibrary,
