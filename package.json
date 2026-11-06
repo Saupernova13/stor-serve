@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Professional file storage and sharing web app",
   "main": "server.js",
+  "engines": {
+    "node": ">=24.7"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
@@ -16,12 +19,11 @@
   "author": "Sauraav Jayrajh",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
-    "express-session": "^1.17.3",
-    "helmet": "^7.1.0",
-    "express-rate-limit": "^7.1.5",
-    "bcryptjs": "^2.4.3",
+    "archiver": "^6.0.0",
     "dotenv": "^16.4.5",
-    "archiver": "^6.0.0"
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-session": "^1.17.3",
+    "helmet": "^7.1.0"
   }
 }

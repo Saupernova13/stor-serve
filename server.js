@@ -18,6 +18,12 @@ shares.tightenPermissions();
 const cfg = config.getOrCreate('default');
 config.ensureDefaultLibrary(cfg);
 
+if (!config.isSupportedHash(cfg.passwordHash)) {
+  console.error('The admin password hash is not Argon2id, so admin login is disabled ' +
+    'until it is reset with `release.ps1 stor-serve -SetPassword` ' +
+    '(or `node scripts/set-password.js`).');
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {

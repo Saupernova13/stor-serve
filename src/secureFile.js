@@ -54,7 +54,7 @@ function fsyncDir(dir) {
   }
 }
 
-// Write a file that holds secrets (the bcrypt hash and session secret in
+// Write a file that holds secrets (the Argon2id hash and session secret in
 // config.json, the share tokens in shares.json). The write is atomic: the new
 // contents go to a temp file in the same directory (exclusive create, 0600 on
 // unix), are fsynced, and the temp file is renamed over the target. A crash,

@@ -71,7 +71,7 @@ d71decb docs: add comprehensive README
 
 ### 3. Session-Based Authentication
 - Express-session with secure cookies
-- Password hashing with bcryptjs (12 rounds)
+- Password hashing with Argon2id (Node `crypto.argon2Sync`, m=19456 t=2 p=1); bcrypt hashes are rejected, reset with `release.ps1 stor-serve -SetPassword`
 - **Why:** Stateless verification, CSRF protection via session secret
 
 ### 4. Path Traversal Protection
@@ -234,7 +234,6 @@ See `C:\Users\RaaViVi\.ecosystem\storage\storage.md` for ecosystem integration.
 - **express-session** 1.17.3
 - **helmet** 7.1.0
 - **express-rate-limit** 7.1.5
-- **bcryptjs** 2.4.3
 - **dotenv** 16.4.5
 
 Total: 6 direct dependencies, 76 total packages (including transitive).
